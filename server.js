@@ -1,29 +1,38 @@
 const express = require("express");
+const path = require("path");
 const http = require("http");
-const { Server } = require("socket.io");
+const socketIo = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
 
-// Serve static files from dist folder
-app.use(express.static("dist"));
-
-// Initialize Socket.IO with the HTTP server
-const io = new Server(server, {
+const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: "*",
     methods: ["GET", "POST"],
     credentials: true,
   },
+  transports: ["websocket", "polling"],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
+// Trust Railway's proxy
+app.set("trust proxy", 1);
+
+// Serve static files from dist
+app.use(express.static(path.join(__dirname, "dist")));
+
+// Socket.io connection handling
 io.on("connection", (socket) => {
   const id = socket.handshake.query.id;
-  console.log(`User connected: ${id}`);
+  console.log(`✅ User connected: ${id}`);
 
   socket.join(id);
 
   socket.on("send-message", ({ recipients, text }) => {
+    console.log(`📨 Message from ${id} to ${recipients.join(", ")}: ${text}`);
     recipients.forEach((recipient) => {
       const newRecipients = recipients.filter((r) => r !== recipient);
       newRecipients.push(id);
@@ -35,12 +44,26 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("disconnect", () => {
-    console.log(`User disconnected: ${id}`);
+  socket.on("disconnect", (reason) => {
+    console.log(`❌ User disconnected: ${id}, Reason: ${reason}`);
+  });
+
+  socket.on("error", (error) => {
+    console.error(`⚠️ Socket error for ${id}:`, error);
   });
 });
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", connections: io.engine.clientsCount });
+});
+
+// Serve React app for all other routes
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+});
+
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
