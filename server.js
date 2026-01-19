@@ -58,8 +58,8 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", connections: io.engine.clientsCount });
 });
 
-// Serve React app for all other routes
-app.get("*", (req, res) => {
+// Serve React app for all other routes (FIXED - use /.* instead of *)
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
